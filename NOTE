@@ -1,0 +1,7 @@
+- A lot of magic numbers and strings that could be removed and labelled
+- a lot of unwraps and crashing with no handling
+- ||| in a reminder would mess it up, maybe a better safe guard for this.  Its a special string for this program but arguably isn't that unique
+- scheduled timer like slack, idea being that you can get regularly pinged.  Requires this to run at start-up
+- a config for colors
+- better flag handling that isn't so rigid
+- backup reminders? On panic, can revert
