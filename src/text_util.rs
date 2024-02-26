@@ -1,10 +1,10 @@
 
 const MAX_ITERATIONS: usize = 12;
 
-pub fn handle_text_wrap<'a>(line: &'a str, line_length: usize) -> Vec<&'a str> {
+pub fn handle_text_wrap<'a>(line: &'a str, line_length: u16) -> Vec<&'a str> {
     let mut vec: Vec<&str> = vec![];
 
-    let mut index = line_length;
+    let mut index = line_length as usize;
     let mut start = 0;
     while line.len() as i32 - index as i32 > 0 {
         let mut iterations = 0;
