@@ -5,3 +5,5 @@
 - a config for colors
 - better flag handling that isn't so rigid
 - backup reminders? On panic, can revert
+- Change all stuff to RON
+- sort so that things with due date are always on top
