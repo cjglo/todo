@@ -24,6 +24,8 @@ impl ToDoHandler {
     const SEPERATOR_BETWEEN_TASK_AND_DATE: &'static str = "  |  ";
     const TITLE_BEFORE_DUE_DATE: &'static str = "DUE ";
 
+    const SPECIAL_VIP_DATES: &'static [&'static str] = &["TODAY", "NOW"];
+
     // I am aware of how cluttered and hard-coded this is, the goal was to make this asap for my use, not make it pretty
     pub fn process(
         args_handler: ArgsHandler,
@@ -84,14 +86,17 @@ impl ToDoHandler {
         }
 
         for (i, todo) in todos.iter().enumerate() {
-            let task = format!("{i}. ") + &todo.task;
+            let header = format!("{i}. ");
+            let header_length = header.len();
+            let task = header + &todo.task;
             let task_lines = text_util::handle_text_wrap(&task, Self::LINE_LENGTH_LIMIT);
             if i != 0 {
                 println!();
             }
-            print!("{0: <60}", task_lines[0].bright_blue());
+            print!("{0}{1: <60}", task_lines[0].get(0..header_length).unwrap().bright_yellow(), task_lines[0].chars().skip(header_length).collect::<String>().bright_blue());
             if let Some(date) = &todo.due_date {
-                println!("{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::TITLE_BEFORE_DUE_DATE, date.bright_yellow());
+                let colored_date = if Self::SPECIAL_VIP_DATES.iter().any(|&x| x == *date) { date.bright_red() } else { date.bright_yellow() };
+                println!("{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::TITLE_BEFORE_DUE_DATE, colored_date);
             }
             else {
                 println!("{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::NO_DUE_DATE_TEXT.green().dimmed());
