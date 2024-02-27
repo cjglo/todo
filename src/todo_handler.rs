@@ -3,15 +3,22 @@ use crate::text_util;
 use colored::{ColoredString, Colorize};
 use std::fs::File;
 use std::{fs, io};
+use std::cmp::Ordering;
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use phf::{phf_set, Set};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ToDo {
     pub task: String,
     pub due_date: Option<String>
 }
+
+static HIGHLIGHTED_DUE_DATES: Set<&'static str> = phf_set! {
+    "TODAY",
+    "NOW",
+};
 
 pub struct ToDoHandler {}
 
@@ -23,8 +30,6 @@ impl ToDoHandler {
     const NO_DUE_DATE_TEXT: &'static str  = "<no due date>";
     const SEPERATOR_BETWEEN_TASK_AND_DATE: &'static str = "  |  ";
     const TITLE_BEFORE_DUE_DATE: &'static str = "DUE ";
-
-    const SPECIAL_VIP_DATES: &'static [&'static str] = &["TODAY", "NOW"];
 
     // I am aware of how cluttered and hard-coded this is, the goal was to make this asap for my use, not make it pretty
     pub fn process(
@@ -68,7 +73,7 @@ impl ToDoHandler {
                 to_add.due_date = Some(args[2].to_string().to_uppercase());
             }
             todos.push(to_add);
-            todos.sort_by(|a,b| a.due_date.is_none().cmp(&b.due_date.is_none()));
+            todos.sort_by(Self::todo_compare);
             let mut file = File::create(path)?;
             file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         }
@@ -95,7 +100,7 @@ impl ToDoHandler {
             }
             print!("{0}{1: <60}", task_lines[0].get(0..header_length).unwrap().bright_yellow(), task_lines[0].chars().skip(header_length).collect::<String>().bright_blue());
             if let Some(date) = &todo.due_date {
-                let colored_date = if Self::SPECIAL_VIP_DATES.iter().any(|&x| x == *date) { date.bright_red() } else { date.bright_yellow() };
+                let colored_date = if HIGHLIGHTED_DUE_DATES.contains(date) { date.bright_red() } else { date.bright_yellow() };
                 println!("{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::TITLE_BEFORE_DUE_DATE, colored_date);
             }
             else {
@@ -110,5 +115,21 @@ impl ToDoHandler {
         }
 
         println!("{}", line.bright_white());
+    }
+
+    fn todo_compare(a: &ToDo, b: &ToDo) -> Ordering {
+        match (a.due_date.is_none(), b.due_date.is_none()) {
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            _ => {
+                if HIGHLIGHTED_DUE_DATES.contains(&a.due_date.clone().unwrap_or("".to_string())) {
+                    Ordering::Less
+                }
+                else {
+                    Ordering::Greater
+                }
+
+            }
+        }
     }
 }

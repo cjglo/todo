@@ -3,3 +3,4 @@
 - scheduled timer like slack, idea being that you can get regularly pinged.  Requires this to run at start-up
 - a config for colors
 - backup reminders? On panic, can revert
+- better handling for text wrapping so that we can print special colors for key word and such
