@@ -69,7 +69,7 @@ impl ToDoHandler {
             let mut file = File::create(path)?;
             file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else if args_handler.marker_flag_and_index.is_some() {
-            let to_edit = &mut todos[args_handler.marker_flag_and_index.unwrap() + 1];
+            let to_edit = &mut todos[args[args_handler.marker_flag_and_index.unwrap() + 1].parse::<usize>().unwrap()];
             if to_edit.char_marker.is_some() {
                 to_edit.char_marker = None;
             }
@@ -116,9 +116,9 @@ impl ToDoHandler {
                 println!();
             }
             if todo.char_marker.is_some() {
-                print!("{0: <63}", task_lines[0].dimmed());
+                print!("{0: <63}", task_lines[0].bright_black());
                 if let Some(date) = &todo.due_date {
-                    println!("{}{}{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE.dimmed(), Self::TITLE_BEFORE_DUE_DATE.dimmed(), date.dimmed(), Self::SEPERATOR_BETWEEN_TASK_AND_DATE.dimmed(), todo.char_marker.unwrap());
+                    println!("{}{}{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), Self::TITLE_BEFORE_DUE_DATE.bright_black(), date.bright_black(), Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), todo.char_marker.unwrap());
                 }
                 if task_lines.len() > 1 {
                     task_lines
