@@ -3,15 +3,23 @@ use crate::text_util;
 use colored::{ColoredString, Colorize};
 use std::fs::File;
 use std::{fs, io};
+use std::cmp::Ordering;
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use phf::{phf_set, Set};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ToDo {
     pub task: String,
-    pub due_date: Option<String>
+    pub due_date: Option<String>,
+    pub char_marker: Option<char>,
 }
+
+static HIGHLIGHTED_DUE_DATES: Set<&'static str> = phf_set! {
+    "TODAY",
+    "NOW",
+};
 
 pub struct ToDoHandler {}
 
@@ -23,6 +31,7 @@ impl ToDoHandler {
     const NO_DUE_DATE_TEXT: &'static str  = "<no due date>";
     const SEPERATOR_BETWEEN_TASK_AND_DATE: &'static str = "  |  ";
     const TITLE_BEFORE_DUE_DATE: &'static str = "DUE ";
+    const DEFAULT_MARKET_CHAR: char = '⌛';
 
     // I am aware of how cluttered and hard-coded this is, the goal was to make this asap for my use, not make it pretty
     pub fn process(
@@ -45,11 +54,11 @@ impl ToDoHandler {
         let mut todos: Vec<ToDo> = ron::de::from_reader(reader).unwrap();
 
         if args_handler.help_flag {
-            unimplemented!();
+            Self::print_help_message();
         } else if args_handler.is_invalid_or_blank {
             // does nothing, not sure if better way to handle this.  Needs to fall through
-        } else if args_handler.delete_flag {
-            let index: usize = args[2].parse().unwrap();
+        } else if args_handler.delete_flag_and_index.is_some() {
+            let index: usize = args[args_handler.delete_flag_and_index.unwrap() + 1].parse().unwrap();
             if todos.len() < 1 {
                 panic!("Error: LIST EMPTY");
             }
@@ -59,22 +68,38 @@ impl ToDoHandler {
             println!("  ✔️");
             let mut file = File::create(path)?;
             file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
+        } else if args_handler.marker_flag_and_index.is_some() {
+            let to_edit = &mut todos[args[args_handler.marker_flag_and_index.unwrap() + 1].parse::<usize>().unwrap()];
+            if to_edit.char_marker.is_some() {
+                to_edit.char_marker = None;
+            }
+            else {
+                to_edit.char_marker = match args.get(args_handler.marker_flag_and_index.unwrap() + 2) {
+                    Some(arg) => Some(arg.chars().nth(0).unwrap()),
+                    None => Some(Self::DEFAULT_MARKET_CHAR)
+                }
+            }
+            let mut file = File::create(path)?;
+            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else {
             // add items to to-do
-            let mut to_add = ToDo { task: args[1].to_string(), due_date: None };
+            let mut to_add = ToDo { task: args[1].to_string(), due_date: None, char_marker: None };
             if args.len() > 2 {
                 to_add.due_date = Some(args[2].to_string().to_uppercase());
             }
             todos.push(to_add);
-            todos.sort_by(|a,b| a.due_date.is_none().cmp(&b.due_date.is_none()));
+            todos.sort_by(Self::todo_compare);
             let mut file = File::create(path)?;
             file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         }
 
-        Self::print_todos(todos);
+        if !args_handler.help_flag {
+            Self::print_todos(todos);
+        }
         Ok(())
     }
 
+    // TODO can def simplify and clean-up this
     fn print_todos(todos: Vec<ToDo>) {
         let mut line = String::new();
         if let Some((width, _)) = term_size::dimensions() {
@@ -82,28 +107,88 @@ impl ToDoHandler {
             line = "=".repeat(width - 2);
             println!("{}", line.bright_white());
         }
-
         for (i, todo) in todos.iter().enumerate() {
-            let task = format!("{i}. ") + &todo.task;
+            let header = format!("{i}. ");
+            let header_length = header.len();
+            let task = header + &todo.task;
             let task_lines = text_util::handle_text_wrap(&task, Self::LINE_LENGTH_LIMIT);
             if i != 0 {
                 println!();
             }
-            print!("{0: <60}", task_lines[0].bright_blue());
-            if let Some(date) = &todo.due_date {
-                println!("{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::TITLE_BEFORE_DUE_DATE, date.bright_yellow());
+            if todo.char_marker.is_some() {
+                print!("{0: <63}", task_lines[0].bright_black());
+                if let Some(date) = &todo.due_date {
+                    println!("{}{}{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), Self::TITLE_BEFORE_DUE_DATE.bright_black(), date.bright_black(), Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), todo.char_marker.unwrap());
+                }
+                else {
+                    println!("{}{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::NO_DUE_DATE_TEXT.bright_black(), Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), todo.char_marker.unwrap());
+                }
+                if task_lines.len() > 1 {
+                    task_lines
+                        .iter()
+                        .skip(1)
+                        .for_each(|x| println!("{0: <50}", x.bright_black()));
+                }
             }
             else {
-                println!("{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::NO_DUE_DATE_TEXT.green().dimmed());
-            }
-            if task_lines.len() > 1 {
-                task_lines
-                    .iter()
-                    .skip(1)
-                    .for_each(|x| println!("{0: <50}", x.bright_blue()));
+                print!("{0}{1: <60}", task_lines[0].get(0..header_length).unwrap().bright_yellow(), task_lines[0].chars().skip(header_length).collect::<String>().bright_blue());
+                if let Some(date) = &todo.due_date {
+                    let colored_date = if HIGHLIGHTED_DUE_DATES.contains(date) { date.bright_red() } else { date.bright_yellow() };
+                    println!("{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::TITLE_BEFORE_DUE_DATE, colored_date);
+                }
+                else {
+                    println!("{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::NO_DUE_DATE_TEXT.green().dimmed());
+                }
+                if task_lines.len() > 1 {
+                    task_lines
+                        .iter()
+                        .skip(1)
+                        .for_each(|x| println!("{0: <50}", x.bright_blue()));
+                }
             }
         }
 
         println!("{}", line.bright_white());
+    }
+
+    fn print_help_message() {
+        let message = r#"
+        todo - Manage Your To-Dos in the CLI
+
+Usage:
+  todo                           Display all todo items and indices
+  todo <item>                    Add a todo item with no due date
+  todo <item> <date>             Add a todo item with a due date
+  todo <item> <'today'|'now'>    Add a todo item with special due date that highlights and puts at top of list
+  todo -d <index>                Remove a todo item by index on the todo list
+  todo -m <index> <char>         Dims a todo item and marks with the given char, char defaults to ⏳
+
+Options:
+  --help                         Displays this help message
+  -d                             Delete the completed todo item
+  -m                             Marks a task to be dimmed out
+
+
+Examples:
+  todo "Buy groceries"           Add a todo item without a due date
+  todo "Finish report" "friday"  Add a todo item with a due date
+  todo -d 0                      Remove a todo item in the list with index 0"#;
+        println!("{}", message);
+    }
+
+    fn todo_compare(a: &ToDo, b: &ToDo) -> Ordering {
+        match (a.due_date.is_none(), b.due_date.is_none()) {
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            _ => {
+                if HIGHLIGHTED_DUE_DATES.contains(&a.due_date.clone().unwrap_or("".to_string())) {
+                    Ordering::Less
+                }
+                else {
+                    Ordering::Greater
+                }
+
+            }
+        }
     }
 }
