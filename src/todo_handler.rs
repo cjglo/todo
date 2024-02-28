@@ -120,11 +120,14 @@ impl ToDoHandler {
                 if let Some(date) = &todo.due_date {
                     println!("{}{}{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), Self::TITLE_BEFORE_DUE_DATE.bright_black(), date.bright_black(), Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), todo.char_marker.unwrap());
                 }
+                else {
+                    println!("{}{}{}{}", Self::SEPERATOR_BETWEEN_TASK_AND_DATE, Self::NO_DUE_DATE_TEXT.bright_black(), Self::SEPERATOR_BETWEEN_TASK_AND_DATE.bright_black(), todo.char_marker.unwrap());
+                }
                 if task_lines.len() > 1 {
                     task_lines
                         .iter()
                         .skip(1)
-                        .for_each(|x| println!("{0: <50}", x.dimmed()));
+                        .for_each(|x| println!("{0: <50}", x.bright_black()));
                 }
             }
             else {
