@@ -81,6 +81,13 @@ impl ToDoHandler {
             }
             let mut file = File::create(path)?;
             file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
+        }  else if args_handler.change_flag_and_index.is_some() {
+            let to_edit = &mut todos[args[args_handler.change_flag_and_index.unwrap() + 1].parse::<usize>().unwrap()];
+            let new_due_date = args.get(args_handler.change_flag_and_index.unwrap() + 2);
+            to_edit.due_date = if new_due_date.is_some() { Some(new_due_date.unwrap().clone().to_uppercase()) } else { None };
+            todos.sort_by(Self::todo_compare);
+            let mut file = File::create(path)?;
+            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else {
             // add items to to-do
             let mut to_add = ToDo { task: args[1].to_string(), due_date: None, char_marker: None };
@@ -161,18 +168,23 @@ Usage:
   todo <item> <date>             Add a todo item with a due date
   todo <item> <'today'|'now'>    Add a todo item with special due date that highlights and puts at top of list
   todo -d <index>                Remove a todo item by index on the todo list
+  todo -c <index> <date>         Changes todo item's due date
   todo -m <index> <char>         Dims a todo item and marks with the given char, char defaults to ⏳
 
 Options:
   --help                         Displays this help message
   -d                             Delete the completed todo item
+  -c                             Changes the due date of an item
   -m                             Marks a task to be dimmed out
 
 
 Examples:
   todo "Buy groceries"           Add a todo item without a due date
   todo "Finish report" "friday"  Add a todo item with a due date
-  todo -d 0                      Remove a todo item in the list with index 0"#;
+  todo "Talk to boss" "today"    Add a todo item with a special due date that will be highlighted
+  todo -d 0                      Remove a todo item in the list with index 0
+  todo -m 1 "?"                  Dims the todo item at index 1 and marks it with "?"
+  todo -c 0 "monday"             Changes the due date of the item at index 0 to 'monday'"#;
         println!("{}", message);
     }
 
