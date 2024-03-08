@@ -112,11 +112,9 @@ impl ToDoHandler {
 
     // TODO can def simplify and clean-up this
     fn print_todos(todos: Vec<ToDo>) {
-        let mut line = String::new();
         if let Some((width, _)) = term_size::dimensions() {
             // Create a string of the terminal width filled with '=' characters, remove the last few because can mess with new lines
-            line = "=".repeat(width - 2);
-            println!("{}", line.bright_white());
+            println!("{}", "-".repeat(width - 2).bright_white());
         }
         for (i, todo) in todos.iter().enumerate() {
             let header = format!("{i}. ");
@@ -182,8 +180,6 @@ impl ToDoHandler {
 
             Self::print_remaining_task_lines(task_lines, todo.char_marker.is_some());
         }
-
-        println!("{}", line.bright_white());
     }
 
     fn print_help_message() {
