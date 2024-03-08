@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Write};
 use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,12 +79,22 @@ impl ToDoHandler {
             let to_edit = &mut todos[args[args_handler.change_flag_and_index.unwrap() + 1]
                 .parse::<usize>()
                 .unwrap()];
-            let new_due_date = args.get(args_handler.change_flag_and_index.unwrap() + 2);
-            to_edit.due_date = if new_due_date.is_some() {
-                Some(new_due_date.unwrap().clone().to_uppercase())
-            } else {
-                None
-            };
+            // 1 string arg means it edits due date, two means it replaces both
+            let first_arg = args.get(args_handler.change_flag_and_index.unwrap() + 2);
+            let second_arg = args.get(args_handler.change_flag_and_index.unwrap() + 3);
+
+            // if second arg has value, then first is new task title and second is new due date
+            // NOTE: Only way to change task title and delete due date is to do it in 2 separate commands
+            if let Some(due_date) = second_arg {
+                to_edit.task = first_arg.unwrap().clone();
+                if due_date.len() != 0 {
+                    to_edit.due_date = Some(due_date.clone().to_uppercase());
+                }
+            }
+            else {
+                to_edit.due_date = if let Some(due_date) = first_arg { Some(due_date.clone().to_uppercase()) } else { None }
+            }
+
             todos.sort_by(Self::todo_compare);
             let mut file = File::create(file_path)?;
             file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
@@ -193,12 +203,14 @@ Usage:
   todo <item> <'today'|'now'>    Add a todo item with special due date that highlights and puts at top of list
   todo -d <index>                Remove a todo item by index on the todo list
   todo -c <index> <date>         Changes todo item's due date
+  todo -c <index> <task> <date>  Changes todo item's task and due date
+  todo -c <index> <task> <''>    Changes todo item's task and copies old due date
   todo -m <index> <char>         Dims a todo item and marks with the given char, char defaults to ⏳
 
 Options:
   --help                         Displays this help message
   -d                             Delete the completed todo item
-  -c                             Changes the due date of an item
+  -c                             Changes the description or due date of an item
   -m                             Marks a task to be dimmed out
 
 
@@ -208,7 +220,9 @@ Examples:
   todo "Talk to boss" "today"    Add a todo item with a special due date that will be highlighted
   todo -d 0                      Remove a todo item in the list with index 0
   todo -m 1 "?"                  Dims the todo item at index 1 and marks it with "?"
-  todo -c 0 "monday"             Changes the due date of the item at index 0 to 'monday'"#;
+  todo -c 0 "monday"             Changes the due date of the item at index 0 to 'monday'
+  todo -c 0 "shop" "tuesday"     Changes the task at 0 to "shop" with new due date 'tuesday'
+  todo -c 0 "buy tickets" ""     Changes the task at 0 to "buy tickets" keeps old due date"#;
         println!("{}", message);
     }
 
