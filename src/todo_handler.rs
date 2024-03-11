@@ -45,9 +45,14 @@ impl ToDoHandler {
 
         if args_handler.help_flag {
             Self::print_help_message();
-        } else if args_handler.is_invalid_or_blank {
-            // does nothing, not sure if better way to handle this.  Needs to fall through
-        } else if args_handler.delete_flag_and_index.is_some() {
+            return Ok(())
+        }
+        if args_handler.is_invalid_or_blank {
+            Self::print_todos(todos);
+            return Ok(())
+        }
+
+        if args_handler.delete_flag_and_index.is_some() {
             let index: usize = args[args_handler.delete_flag_and_index.unwrap() + 1]
                 .parse()
                 .unwrap();
@@ -58,8 +63,6 @@ impl ToDoHandler {
             print!("You Completed:");
             print!("\n{}", removed.task.bright_purple());
             println!("  ✔️");
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else if args_handler.marker_flag_and_index.is_some() {
             let to_edit = &mut todos[args[args_handler.marker_flag_and_index.unwrap() + 1]
                 .parse::<usize>()
@@ -73,8 +76,6 @@ impl ToDoHandler {
                         None => Some(Self::DEFAULT_MARKET_CHAR),
                     }
             }
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else if args_handler.change_flag_and_index.is_some() {
             let to_edit = &mut todos[args[args_handler.change_flag_and_index.unwrap() + 1]
                 .parse::<usize>()
@@ -94,10 +95,6 @@ impl ToDoHandler {
             else {
                 to_edit.due_date = if let Some(due_date) = first_arg { Some(due_date.clone().to_uppercase()) } else { None }
             }
-
-            todos.sort_by(Self::todo_compare);
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else {
             // add items to to-do
             let mut to_add = ToDo {
@@ -109,19 +106,18 @@ impl ToDoHandler {
                 to_add.due_date = Some(args[2].to_string().to_uppercase());
             }
             todos.push(to_add);
-            todos.sort_by(Self::todo_compare);
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         }
+        todos.sort_by(Self::todo_compare);
+        let mut file = File::create(file_path)?;
+        file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
+        Self::print_todos(todos);
 
-        if !args_handler.help_flag {
-            Self::print_todos(todos);
-        }
         Ok(())
     }
 
     // TODO can def simplify and clean-up this
     fn print_todos(todos: Vec<ToDo>) {
+        std::process::Command::new("clear").status().unwrap();
         if let Some((width, _)) = term_size::dimensions() {
             // Create a string of the terminal width filled with '=' characters, remove the last few because can mess with new lines
             println!("{}", "-".repeat(width - 2).bright_white());
@@ -227,14 +223,18 @@ Examples:
     }
 
     fn todo_compare(a: &ToDo, b: &ToDo) -> Ordering {
-        match (a.due_date.is_none(), b.due_date.is_none()) {
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            _ => {
-                if HIGHLIGHTED_DUE_DATES.contains(&a.due_date.clone().unwrap_or("".to_string())) {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
+        match (a.char_marker.is_none(), b.char_marker.is_none()) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            _ => match (a.due_date.is_none(), b.due_date.is_none()) {
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                _ => {
+                    if HIGHLIGHTED_DUE_DATES.contains(&a.due_date.clone().unwrap_or("".to_string())) {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
                 }
             }
         }
