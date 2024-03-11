@@ -38,10 +38,10 @@ impl ToDoHandler {
         current_path: PathBuf,
     ) -> io::Result<()> {
         let file_path = text_util::get_or_create_directory_file_path(current_path)?;
-
         let file = File::open(file_path.clone())?;
         let reader = BufReader::new(file);
         let mut todos: Vec<ToDo> = ron::de::from_reader(reader).unwrap();
+        std::process::Command::new("clear").status().unwrap();
 
         if args_handler.help_flag {
             Self::print_help_message();
@@ -117,7 +117,6 @@ impl ToDoHandler {
 
     // TODO can def simplify and clean-up this
     fn print_todos(todos: Vec<ToDo>) {
-        std::process::Command::new("clear").status().unwrap();
         if let Some((width, _)) = term_size::dimensions() {
             // Create a string of the terminal width filled with '=' characters, remove the last few because can mess with new lines
             println!("{}", "-".repeat(width - 2).bright_white());
