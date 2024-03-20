@@ -1,34 +1,19 @@
 use crate::args_handler::ArgsHandler;
 use crate::text_util;
+use crate::todo_item;
 use colored::Colorize;
-use phf::{phf_set, Set};
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fs::File;
 use std::io;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ToDo {
-    pub task: String,
-    pub due_date: Option<String>,
-    pub char_marker: Option<char>,
-}
 
-static HIGHLIGHTED_DUE_DATES: Set<&'static str> = phf_set! {
-    "TODAY",
-    "NOW",
-};
 
 pub struct ToDoHandler {}
 
 // TODO currently doesn't need to be struct, but may leave because fields may be required in future
 impl ToDoHandler {
-    const LINE_LENGTH_LIMIT: u16 = 60;
-    const NO_DUE_DATE_TEXT: &'static str = "<no due date>";
-    const PADDING_BETWEEN_TASK_AND_DATE: &'static str = "  |  ";
-    const TITLE_BEFORE_DUE_DATE: &'static str = "DUE ";
     const DEFAULT_MARKET_CHAR: char = '⌛';
 
     // I am aware of how cluttered and hard-coded this is, the goal was to make this asap for my use, not make it pretty
@@ -38,16 +23,24 @@ impl ToDoHandler {
         current_path: PathBuf,
     ) -> io::Result<()> {
         let file_path = text_util::get_or_create_directory_file_path(current_path)?;
-
         let file = File::open(file_path.clone())?;
         let reader = BufReader::new(file);
-        let mut todos: Vec<ToDo> = ron::de::from_reader(reader).unwrap();
+        let mut todos: Vec<todo_item::ToDo> = ron::de::from_reader(reader).unwrap();
 
+        // early exit options
         if args_handler.help_flag {
             Self::print_help_message();
-        } else if args_handler.is_invalid_or_blank {
-            // does nothing, not sure if better way to handle this.  Needs to fall through
-        } else if args_handler.delete_flag_and_index.is_some() {
+            return Ok(())
+        }
+        if args_handler.is_invalid {
+            return Ok(())
+        }
+        if args_handler.is_blank {
+            Self::print_todos(todos);
+            return Ok(())
+        }
+
+        if args_handler.delete_flag_and_index.is_some() {
             let index: usize = args[args_handler.delete_flag_and_index.unwrap() + 1]
                 .parse()
                 .unwrap();
@@ -58,8 +51,6 @@ impl ToDoHandler {
             print!("You Completed:");
             print!("\n{}", removed.task.bright_purple());
             println!("  ✔️");
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else if args_handler.marker_flag_and_index.is_some() {
             let to_edit = &mut todos[args[args_handler.marker_flag_and_index.unwrap() + 1]
                 .parse::<usize>()
@@ -73,8 +64,6 @@ impl ToDoHandler {
                         None => Some(Self::DEFAULT_MARKET_CHAR),
                     }
             }
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else if args_handler.change_flag_and_index.is_some() {
             let to_edit = &mut todos[args[args_handler.change_flag_and_index.unwrap() + 1]
                 .parse::<usize>()
@@ -94,13 +83,9 @@ impl ToDoHandler {
             else {
                 to_edit.due_date = if let Some(due_date) = first_arg { Some(due_date.clone().to_uppercase()) } else { None }
             }
-
-            todos.sort_by(Self::todo_compare);
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         } else {
             // add items to to-do
-            let mut to_add = ToDo {
+            let mut to_add = todo_item::ToDo {
                 task: args[1].to_string(),
                 due_date: None,
                 char_marker: None,
@@ -109,86 +94,25 @@ impl ToDoHandler {
                 to_add.due_date = Some(args[2].to_string().to_uppercase());
             }
             todos.push(to_add);
-            todos.sort_by(Self::todo_compare);
-            let mut file = File::create(file_path)?;
-            file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
         }
+        todos.sort_by(Self::todo_compare);
+        let mut file = File::create(file_path)?;
+        file.write_all(ron::ser::to_string(&todos).unwrap().as_bytes())?;
+        Self::print_todos(todos);
 
-        if !args_handler.help_flag {
-            Self::print_todos(todos);
-        }
         Ok(())
     }
 
     // TODO can def simplify and clean-up this
-    fn print_todos(todos: Vec<ToDo>) {
+    fn print_todos(todos: Vec<todo_item::ToDo>) {
         if let Some((width, _)) = term_size::dimensions() {
             // Create a string of the terminal width filled with '=' characters, remove the last few because can mess with new lines
             println!("{}", "-".repeat(width - 2).bright_white());
         }
         for (i, todo) in todos.iter().enumerate() {
-            let header = format!("{i}. ");
-            let header_length = header.len();
-            let task = header + &todo.task;
-            let task_lines = text_util::handle_text_wrap(&task, Self::LINE_LENGTH_LIMIT);
-            if i != 0 {
-                println!();
-            }
-            // This will check if to-do should be marked as dim, then color the number of the line, and break it it up to format it correctly
-            if todo.char_marker.is_some() {
-                print!("{0: <63}", task_lines[0].bright_black());
-                if let Some(date) = &todo.due_date {
-                    println!(
-                        "{}{}",
-                        (Self::PADDING_BETWEEN_TASK_AND_DATE.to_string()
-                            + Self::TITLE_BEFORE_DUE_DATE
-                            + date
-                            + Self::PADDING_BETWEEN_TASK_AND_DATE)
-                            .bright_black(),
-                        todo.char_marker.unwrap()
-                    );
-                } else {
-                    println!(
-                        "{}{}",
-                        (Self::PADDING_BETWEEN_TASK_AND_DATE.to_string()
-                            + Self::NO_DUE_DATE_TEXT
-                            + Self::PADDING_BETWEEN_TASK_AND_DATE)
-                            .bright_black(),
-                        todo.char_marker.unwrap()
-                    );
-                }
-            } else {
-                print!(
-                    "{0}{1: <60}",
-                    task_lines[0].get(0..header_length).unwrap().bright_yellow(),
-                    task_lines[0]
-                        .chars()
-                        .skip(header_length)
-                        .collect::<String>()
-                        .bright_blue()
-                );
-                if let Some(date) = &todo.due_date {
-                    let colored_date = if HIGHLIGHTED_DUE_DATES.contains(date) {
-                        date.bright_red()
-                    } else {
-                        date.bright_yellow()
-                    };
-                    println!(
-                        "{}{}{}",
-                        Self::PADDING_BETWEEN_TASK_AND_DATE,
-                        Self::TITLE_BEFORE_DUE_DATE,
-                        colored_date
-                    );
-                } else {
-                    println!(
-                        "{}{}",
-                        Self::PADDING_BETWEEN_TASK_AND_DATE,
-                        Self::NO_DUE_DATE_TEXT.green().dimmed()
-                    );
-                }
-            }
-
-            Self::print_remaining_task_lines(task_lines, todo.char_marker.is_some());
+            let header = i.to_string();
+            print!("{0:<3}", i);
+            print!("{}", todo);
         }
     }
 
@@ -226,33 +150,21 @@ Examples:
         println!("{}", message);
     }
 
-    fn todo_compare(a: &ToDo, b: &ToDo) -> Ordering {
-        match (a.due_date.is_none(), b.due_date.is_none()) {
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            _ => {
-                if HIGHLIGHTED_DUE_DATES.contains(&a.due_date.clone().unwrap_or("".to_string())) {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
+    fn todo_compare(a: &todo_item::ToDo, b: &todo_item::ToDo) -> Ordering {
+        match (a.char_marker.is_none(), b.char_marker.is_none()) {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            _ => match (a.due_date.is_none(), b.due_date.is_none()) {
+                (true, false) => Ordering::Greater,
+                (false, true) => Ordering::Less,
+                _ => {
+                    if todo_item::HIGHLIGHTED_DUE_DATES.contains(&a.due_date.clone().unwrap_or("".to_string())) {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
+                    }
                 }
             }
-        }
-    }
-
-    fn print_remaining_task_lines(task_lines: Vec<&str>, is_marked: bool) {
-        let color_lambda = |x: &str| {
-            if is_marked {
-                x.bright_black()
-            } else {
-                x.bright_blue()
-            }
-        };
-        if task_lines.len() > 1 {
-            task_lines
-                .iter()
-                .skip(1)
-                .for_each(|x| println!("{0: <50}", color_lambda(x)));
         }
     }
 }
